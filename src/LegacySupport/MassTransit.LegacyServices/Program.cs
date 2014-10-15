@@ -23,8 +23,7 @@ namespace LegacyRuntime
     using StructureMap;
     using StructureMap.Configuration.DSL;
     using Topshelf;
-    using Topshelf.Configuration;
-	using Topshelf.Configuration.Dsl;
+    using Topshelf.HostConfigurators;
 
     class Program
     {
@@ -41,7 +40,9 @@ namespace LegacyRuntime
 
             ObjectFactory.Initialize(x => { x.For<IConfiguration>().Use<Configuration>(); });
 
-            var cfg = RunnerConfigurator.New(config =>
+            var serviceConfiguration = ObjectFactory.GetInstance<IConfiguration>();
+
+            HostFactory.Run(config =>
             {
                 config.SetServiceName(typeof(Program).Namespace);
                 config.SetDisplayName(typeof(Program).Namespace);
@@ -49,8 +50,8 @@ namespace LegacyRuntime
 
                 config.RunAsLocalSystem();
 
-                config.DependencyOnMsmq();
-                config.DependencyOnMsSql();
+                config.DependsOnMsmq();
+                config.DependsOnMsSql();
 
                 config.ConfigureService<LegacySubscriptionProxyService>(s =>
                 {
@@ -83,6 +84,36 @@ namespace LegacyRuntime
 
             service.WhenStarted(start);
             service.WhenStopped(stop);
+        }
+    }
+
+    public static class ConfigureServiceExtension
+    {
+        public static void ConfigureService<TService, TRegistry>(this HostConfigurator configurator,
+            Func<IContainer, TRegistry> registry,
+            Action<TService> start, Action<TService> stop)
+            where TRegistry : Registry
+            where TService : class
+        {
+            var container = new Container(x =>
+            {
+                x.For<IConfiguration>()
+                 .Singleton()
+                 .Add<Configuration>();
+
+                x.For<TService>()
+                 .Singleton()
+                 .Use<TService>();
+            });
+
+            container.Configure(x => x.AddRegistry(registry(container)));
+
+            configurator.Service<TService>(service =>
+            {
+                service.ConstructUsing(builder => container.GetInstance<TService>());
+                service.WhenStarted(start);
+                service.WhenStopped(stop);
+            });
         }
     }
 }

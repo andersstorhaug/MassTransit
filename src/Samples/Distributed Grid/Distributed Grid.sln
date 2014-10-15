@@ -1,6 +1,6 @@
 ﻿
-Microsoft Visual Studio Solution File, Format Version 10.00
-# Visual Studio 2008
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2012
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DistributedGrid.Worker", "DistributedGrid.Worker\DistributedGrid.Worker.csproj", "{6670D1F9-EC59-48A3-BCB4-47D4BE6FBC5E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DistributedGrid.Activator", "DistributedGrid.Activator\DistributedGrid.Activator.csproj", "{87194E94-9647-4130-A84F-C495BDF75D39}"

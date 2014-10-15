@@ -9,9 +9,7 @@ namespace BusDriver.Commands
 	{
 		public static string GetDefinition(this IEnumerable<ICommandLineElement> elements, string key)
 		{
-			return elements
-				.Where(x => typeof (IDefinitionElement).IsAssignableFrom(x.GetType()))
-				.Select(x => x as IDefinitionElement)
+			return elements.OfType<IDefinitionElement>()
 				.Where(x => x.Key == key)
 				.Select(x => x.Value)
 				.Single();
@@ -19,10 +17,8 @@ namespace BusDriver.Commands
 
 		public static bool GetSwitch(this IEnumerable<ICommandLineElement> elements, char key)
 		{
-			return elements
-				.Where(x => typeof(ISwitchElement).IsAssignableFrom(x.GetType()))
-				.Select(x => x as ISwitchElement)
-				.Where(x => x.Key == key)
+			return elements.OfType<ISwitchElement>()
+				.Where(x => x.Key == key.ToString())
 				.Select(x => true)
 				.SingleOrDefault();
 		}
@@ -30,9 +26,7 @@ namespace BusDriver.Commands
 		public static T GetDefinition<T>(this IEnumerable<ICommandLineElement> elements, string key,
 		                                 Func<string, T> converter)
 		{
-			return elements
-				.Where(x => typeof (IDefinitionElement).IsAssignableFrom(x.GetType()))
-				.Select(x => x as IDefinitionElement)
+			return elements.OfType<IDefinitionElement>()
 				.Where(x => x.Key == key)
 				.Select(x => converter(x.Value))
 				.Single();
