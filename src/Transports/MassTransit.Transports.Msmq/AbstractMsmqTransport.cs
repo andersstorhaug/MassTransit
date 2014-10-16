@@ -10,6 +10,9 @@
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR 
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the 
 // specific language governing permissions and limitations under the License.
+
+using Magnum.Monads;
+
 namespace MassTransit.Transports.Msmq
 {
 	using System;
@@ -21,6 +24,9 @@ namespace MassTransit.Transports.Msmq
 	using Internal;
 	using log4net;
 	using Magnum.DateTimeExtensions;
+
+    // ADK - Added following using statement
+    using DynaTrace.DynaTraceADK;
 
 	[DebuggerDisplay("{Address}")]
 	public class AbstractMsmqTransport :
@@ -79,18 +85,29 @@ namespace MassTransit.Transports.Msmq
 				if (_log.IsDebugEnabled)
 					_log.DebugFormat("Enumerating endpoint: {0} ({1}ms)", Address, timeout);
 
-				while (enumerator.MoveNext(timeout))
-				{
-					Message current = enumerator.Current;
-					if (current == null)
-					{
-						if (_log.IsDebugEnabled)
-							_log.DebugFormat("Current message was null while enumerating endpoint");
+			    while (enumerator.MoveNext(timeout))
+			    {
+			        Message current = enumerator.Current;
+			        if (current == null)
+			        {
+			            if (_log.IsDebugEnabled)
+			                _log.DebugFormat("Current message was null while enumerating endpoint");
 
-						continue;
-					}
+			            continue;
+			        }
+			        // ADK - Get tag here
+			        DynaTraceADKFactory.initialize();
+			        Tagging adk = DynaTraceADKFactory.createTagging();
+			        //  TODO Get the tag from dtdTagInfo from current
+			        String tag = "";
+			        if (!string.IsNullOrEmpty(tag))
+			        {
+			            adk.setTagFromString(tag);
+			            adk.startServerPurePath();
+			         }
 
-					Action<Message> receive = receiver(current);
+
+			    Action<Message> receive = receiver(current);
 					if (receive == null)
 					{
 						if (_log.IsDebugEnabled)
@@ -186,6 +203,10 @@ namespace MassTransit.Transports.Msmq
 		protected virtual void ReceiveMessage(MessageEnumerator enumerator, TimeSpan timeout, Action<Func<Message>> receiveAction)
 		{
 			receiveAction(() => enumerator.RemoveCurrent(timeout, MessageQueueTransactionType.None));
+            // ADK - End Server PurePath Here
+            DynaTraceADKFactory.initialize();
+		    Tagging adk = DynaTraceADKFactory.createTagging();
+            adk.endServerPurePath();
 		}
 
 		protected virtual void Dispose(bool disposing)

@@ -38,6 +38,9 @@
     <DocumentationFile>..\..\bin\MassTransit.Transports.Msmq.XML</DocumentationFile>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="DynaTraceADK20">
+      <HintPath>..\..\..\lib\DynaTrace-6.0.0\adk\lib64\DynaTraceADK20.dll</HintPath>
+    </Reference>
     <Reference Include="log4net, Version=1.2.10.0, Culture=neutral, PublicKeyToken=1b44e1d426115821, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\..\lib\log4net.dll</HintPath>
