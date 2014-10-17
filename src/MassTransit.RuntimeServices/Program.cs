@@ -10,80 +10,71 @@
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR 
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the 
 // specific language governing permissions and limitations under the License.
-
-using System.IO;
-using log4net;
-using log4net.Config;
-
 namespace MassTransit.RuntimeServices
 {
-    using System;
-    using Exceptions;
-    using Services.HealthMonitoring;
-    using Services.Subscriptions.Server;
-    using Services.Timeout;
-    using StructureMap;
-    using StructureMap.Configuration.DSL;
-    using Topshelf;
-    using Topshelf.HostConfigurators;
+	using System;
+	using System.IO;
+	using log4net;
+	using log4net.Config;
+	using Magnum.Reflection;
+	using Services.HealthMonitoring;
+	using Services.Subscriptions.Server;
+	using Services.Timeout;
+	using StructureMap;
+	using StructureMap.Configuration.DSL;
+	using Topshelf;
+	using Topshelf.Configuration;
+	using Topshelf.Configuration.Dsl;
+	using Transports.Msmq;
 
-    class Program
+	internal class Program
 	{
 		private static readonly ILog _log = LogManager.GetLogger(typeof (Program));
 
 		private static void Main(string[] args)
 		{
-            BootstrapLogger();
+			BootstrapLogger();
 
-            ObjectFactory.Initialize(x => x.For<IConfiguration>().Use<Configuration>());
+			MsmqEndpointConfigurator.Defaults(x => { x.CreateMissingQueues = true; });
 
-            var serviceConfiguration = ObjectFactory.GetInstance<IConfiguration>();
+			ObjectFactory.Initialize(x => { x.For<IConfiguration>().Use<Configuration>(); });
 
-            HostFactory.Run(config =>
-            {
-                config.SetServiceName(typeof(Program).Namespace);
-                config.SetDisplayName(typeof(Program).Namespace);
-                config.SetDescription("MassTransit Runtime Services (Subscription, Timeout, Health Monitoring)");
+			var serviceConfiguration = ObjectFactory.GetInstance<IConfiguration>();
 
-                if (serviceConfiguration.UseServiceCredentials)
-                    config.RunAs(serviceConfiguration.ServiceUsername, serviceConfiguration.ServicePassword);
-                else
-                    config.RunAsLocalSystem();
+			RunConfiguration configuration = RunnerConfigurator.New(config =>
+				{
+					config.SetServiceName(typeof (Program).Namespace);
+					config.SetDisplayName(typeof (Program).Namespace);
+					config.SetDescription("MassTransit Runtime Services (Subscription, Timeout, Health Monitoring)");
 
-                config.DependsOnMsmq();
+                    if (serviceConfiguration.UseServiceCredentials)
+                    {
+                        config.RunAs(serviceConfiguration.ServiceUsername, serviceConfiguration.ServicePassword);
+                    }
+                    else
+                        config.RunAsLocalSystem();
 
-                int count = (serviceConfiguration.SubscriptionServiceEnabled
-                                ? 1
-                                : 0)
-                                  + (serviceConfiguration.HealthServiceEnabled
-                                      ? 1
-                                      : 0)
-                                        + (serviceConfiguration.TimeoutServiceEnabled
-                                            ? 1
-                                            : 0);
+					config.DependencyOnMsmq();
+					
+					if (serviceConfiguration.SubscriptionServiceEnabled)
+					{
+						config.ConfigureService<SubscriptionService>(service => { ConfigureService<SubscriptionService, SubscriptionServiceRegistry>(service, start => start.Start(), stop => stop.Stop()); });
+					}
 
-                //if (count != 1)
-                //{
-                //    throw new ConfigurationException("One and only one service must be enabled");
-                //}
+					if (serviceConfiguration.HealthServiceEnabled)
+					{
+						config.ConfigureService<HealthService>(service => { ConfigureService<HealthService, HealthServiceRegistry>(service, start => start.Start(), stop => stop.Stop()); });
+					}
 
-                if (serviceConfiguration.SubscriptionServiceEnabled)
-                {
-                    config.ConfigureService<SubscriptionService, SubscriptionServiceRegistry>(
-                        c => new SubscriptionServiceRegistry(c), start => start.Start(), stop => stop.Stop());
-                }
-                else if (serviceConfiguration.HealthServiceEnabled)
-                {
-                    config.ConfigureService<HealthService, HealthServiceRegistry>(
-                        c => new HealthServiceRegistry(c), start => start.Start(), stop => stop.Stop());
-                }
-                else if (serviceConfiguration.TimeoutServiceEnabled)
-                {
-                    config.ConfigureService<TimeoutService, TimeoutServiceRegistry>(
-                        c => new TimeoutServiceRegistry(c), start => start.Start(), stop => stop.Stop());
-                }
-            });
-        }
+					if (serviceConfiguration.TimeoutServiceEnabled)
+					{
+						config.ConfigureService<TimeoutService>(service => { ConfigureService<TimeoutService, TimeoutServiceRegistry>(service, start => start.Start(), stop => stop.Stop()); });
+					}
+
+					config.AfterStoppingTheHost(x => { _log.Info("MassTransit Runtime Services are exiting..."); });
+				});
+			Runner.Host(configuration, args);
+		}
 
 		private static void BootstrapLogger()
 		{
@@ -93,35 +84,28 @@ namespace MassTransit.RuntimeServices
 
 			_log.Info("Loading " + typeof (Program).Namespace + " Services...");
 		}
-    }
 
-    public static class ConfigureServiceExtension
-    {
-        public static void ConfigureService<TService, TRegistry>(this HostConfigurator configurator,
-            Func<IContainer, TRegistry> registry,
-            Action<TService> start, Action<TService> stop)
-            where TRegistry : Registry
-            where TService : class
-        {
-            var container = new Container(x =>
-            {
-                x.For<IConfiguration>()
-                 .Singleton()
-                 .Add<Configuration>();
+		private static void ConfigureService<TService, TRegistry>(IServiceConfigurator<TService> service, Action<TService> start, Action<TService> stop)
+			where TRegistry : Registry
+		{
+			var container = new Container(x =>
+				{
+					x.For<IConfiguration>()
+						.Singleton()
+						.Add<Configuration>();
 
-                x.For<TService>()
-                 .Singleton()
-                 .Use<TService>();
-            });
+					x.For<TService>()
+						.Singleton()
+						.Use<TService>();
+				});
 
-            container.Configure(x => x.AddRegistry(registry(container)));
+			TRegistry registry = FastActivator<TRegistry>.Create(container);
 
-            configurator.Service<TService>(service =>
-            {
-                service.ConstructUsing(builder => container.GetInstance<TService>());
-                service.WhenStarted(start);
-                service.WhenStopped(stop);
-            });
-        }
-    }
+			container.Configure(x => x.AddRegistry(registry));
+
+			service.HowToBuildService(builder => container.GetInstance<TService>());
+			service.WhenStarted(start);
+			service.WhenStopped(stop);
+		}
+	}
 }

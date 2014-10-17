@@ -85,6 +85,10 @@ namespace MassTransit.Transports.Msmq
 				if (_log.IsDebugEnabled)
 					_log.DebugFormat("Enumerating endpoint: {0} ({1}ms)", Address, timeout);
 
+
+                // ADK - Add MessageReadPorpertyFilter to get Extension
+			    _queue.MessageReadPropertyFilter.Extension = true;
+
 			    while (enumerator.MoveNext(timeout))
 			    {
 			        Message current = enumerator.Current;
@@ -97,14 +101,39 @@ namespace MassTransit.Transports.Msmq
 			        }
 			        // ADK - Get tag here
 			        DynaTraceADKFactory.initialize();
-			        Tagging adk = DynaTraceADKFactory.createTagging();
-			        //  TODO Get the tag from dtdTagInfo from current
-			        String tag = "";
-			        if (!string.IsNullOrEmpty(tag))
-			        {
-			            adk.setTagFromString(tag);
-			            adk.startServerPurePath();
-			         }
+			        var adk = DynaTraceADKFactory.createTagging();
+			        // Get the tag from current.Extension
+                    byte[] data = current.Extension;
+
+                    const int magicInt = 395394190;
+                    const int tracetagSize = 1 /* Version */+ 1 /* Size */+ 4 /* ServerId */+ 4 * 6;
+                    const int traceTagLength = tracetagSize + 4;
+                    if (data.Length >= traceTagLength)
+                    {
+                        var offset = data.Length - traceTagLength;
+                        var tagOffset = offset + tracetagSize;
+                        var magic = data[tagOffset] << 24 | (data[tagOffset + 1] << 16) | (data[tagOffset + 2] << 8) | (data[tagOffset + 3]);
+                        if (magic == magicInt)
+                        {
+                            byte[] original;
+                            if (offset == 0)
+                            {
+                                // we do not set the extension to new byte[0] to prevent an aliasing bug in System.Messaging
+                                original = new byte[1];
+                            }
+                            else
+                            {
+                                original = new byte[offset];
+                                Array.Copy(data, original, offset);
+                            }
+                            current.Extension = original;
+                            byte[] tag = new byte[traceTagLength];
+                            Array.Copy(data, offset, tag, 0, traceTagLength);
+
+                            adk.setTag(tag);
+                            adk.startServerPurePath();
+                        }
+                    }
 
 
 			    Action<Message> receive = receiver(current);
